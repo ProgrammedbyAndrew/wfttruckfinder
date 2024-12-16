@@ -1,25 +1,43 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>WFT AR Truck Finder</title>
-<link rel="stylesheet" href="css/style.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Food Truck AR Navigation</title>
+  <link rel="stylesheet" href="styles.css"/>
+  
+  <!-- A-Frame -->
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <!-- AR.js -->
+  <script src="https://cdn.jsdelivr.net/npm/aframe-ar-nft/dist/aframe-ar-nft.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/aframe-extras@6.1.1/dist/aframe-extras.min.js"></script>
+  
 </head>
 <body>
-
-<div class="camera-container">
-  <video id="camera-stream" playsinline autoplay></video>
-  <div class="overlay">
-    <canvas id="three-canvas"></canvas>
-    <div id="distance-indicator"></div>
-    <button id="start-btn">Start</button>
+  <div id="loading">Accessing camera and GPS...</div>
+  <div id="ui" style="display:none;">
+    Distance: <span id="distance">Calculating...</span> ft
   </div>
-</div>
 
-<!-- Three.js from CDN -->
-<script src="https://unpkg.com/three@0.152.2/build/three.min.js"></script>
-<script src="js/main.js"></script>
+  <a-scene
+    vr-mode-ui="enabled: false;"
+    embedded
+    arjs="sourceType: camera; debugUIEnabled: false;"
+    renderer="logarithmicDepthBuffer: true;">
+      
+    <a-entity id="arrow"
+              position="0 0 -3"
+              rotation="0 0 0"
+              geometry="primitive: cone; height: 1; radiusBottom: 0.5; radiusTop: 0;"
+              material="color: red;">
+    </a-entity>
+    
+    <a-entity id="hereText"
+              position="0 1 -2"
+              text="value: YOU ARE HERE!; color: #00FF00; align: center; width: 4;"
+              visible="false"></a-entity>
+  </a-scene>
 
+  <script src="app.js"></script>
 </body>
 </html>
