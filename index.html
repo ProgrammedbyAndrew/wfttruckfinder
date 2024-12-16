@@ -5,37 +5,48 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Food Truck AR Navigation</title>
   <link rel="stylesheet" href="styles.css"/>
-  
+
   <!-- A-Frame -->
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-  <!-- AR.js -->
-  <script src="https://cdn.jsdelivr.net/npm/aframe-ar-nft/dist/aframe-ar-nft.min.js"></script>
+  
+  <!-- AR.js location-based version -->
+  <script src="https://cdn.jsdelivr.net/npm/aframe-ar@1.2.0/dist/aframe-ar-nft.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/aframe-extras@6.1.1/dist/aframe-extras.min.js"></script>
   
 </head>
 <body>
   <div id="loading">Accessing camera and GPS...</div>
   <div id="ui" style="display:none;">
-    Distance: <span id="distance">Calculating...</span> ft
+    Distance: <span id="distance">--</span> ft
   </div>
 
   <a-scene
-    vr-mode-ui="enabled: false;"
     embedded
-    arjs="sourceType: camera; debugUIEnabled: false;"
+    vr-mode-ui="enabled: false"
+    arjs="sourceType: camera; locationEnabled: true; debugUIEnabled: false;"
     renderer="logarithmicDepthBuffer: true;">
-      
-    <a-entity id="arrow"
-              position="0 0 -3"
-              rotation="0 0 0"
-              geometry="primitive: cone; height: 1; radiusBottom: 0.5; radiusTop: 0;"
-              material="color: red;">
+
+    <!-- Camera with GPS tracking -->
+    <a-camera gps-camera rotation-reader></a-camera>
+
+    <!-- Target entity at the Food Truck location -->
+    <!-- This entity is placed at lat/lon. AR.js will handle user location and update distance. -->
+    <a-entity id="target"
+              gps-entity-place="latitude: 28.3372; longitude: -81.4633"
+              geometry="primitive: cone; height: 1; radiusBottom: 0.5; radiusTop:0"
+              material="color: red"
+              scale="1 1 1"
+              visible="true">
     </a-entity>
-    
+
+    <!-- "YOU ARE HERE" text will be shown on top of the target once close enough -->
     <a-entity id="hereText"
-              position="0 1 -2"
+              gps-entity-place="latitude: 28.3372; longitude: -81.4633"
               text="value: YOU ARE HERE!; color: #00FF00; align: center; width: 4;"
-              visible="false"></a-entity>
+              position="0 2 0"
+              visible="false">
+    </a-entity>
+
   </a-scene>
 
   <script src="app.js"></script>
