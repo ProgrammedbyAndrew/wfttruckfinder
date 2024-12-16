@@ -9,24 +9,37 @@ const THRESHOLD_DISTANCE = 20;
 const distanceIndicator = document.getElementById('distance-indicator');
 const videoEl = document.getElementById('camera-stream');
 const canvasEl = document.getElementById('three-canvas');
+const startBtn = document.getElementById('start-btn');
 
 let currentLatitude = null;
 let currentLongitude = null;
 let currentHeading = null;
 
-if ('geolocation' in navigator && 'mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices) {
-  setupCamera().then(() => {
-    watchPosition();
-    watchHeading();
-    setupThreeJS();
-  });
-} else {
-  alert("Your browser does not support necessary APIs for this application.");
-}
-
 // THREE.js variables
 let scene, camera, renderer;
 let arrowObject;
+
+startBtn.addEventListener('click', async () => {
+  startBtn.style.display = 'none'; // Hide the button
+
+  // Request device orientation permission on iOS
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try {
+      const response = await DeviceOrientationEvent.requestPermission();
+      if (response !== 'granted') {
+        alert("Device orientation permission not granted. The arrow may not rotate with your device orientation.");
+      }
+    } catch (err) {
+      console.error("Error requesting device orientation permission:", err);
+    }
+  }
+
+  // Now attempt to set up camera and geolocation
+  await setupCamera();
+  setupThreeJS();
+  watchPosition();
+  watchHeading();
+});
 
 /**
  * Setup the back-facing camera stream
@@ -60,7 +73,7 @@ function watchPosition() {
     },
     err => {
       console.error("Geolocation error:", err);
-      alert("Could not get your location. Ensure GPS is enabled.");
+      alert("Could not get your location. Ensure GPS is enabled and grant permission.");
     },
     { enableHighAccuracy: true, maximumAge: 1000 }
   );
@@ -72,11 +85,17 @@ function watchPosition() {
 function watchHeading() {
   if (window.DeviceOrientationEvent) {
     window.addEventListener('deviceorientation', event => {
-      currentHeading = event.alpha;
+      // iOS Safari may provide webkitCompassHeading:
+      // webkitCompassHeading is degrees from North (0° = North)
+      if (event.webkitCompassHeading !== undefined) {
+        currentHeading = event.webkitCompassHeading;
+      } else {
+        // fallback to alpha if no webkitCompassHeading
+        // alpha: 0 = device facing North
+        currentHeading = event.alpha;
+      }
       updateDirection();
     }, true);
-  } else {
-    // If not available, we'll rely solely on bearing calculations.
   }
 }
 
@@ -84,26 +103,20 @@ function watchHeading() {
  * Setup Three.js scene
  */
 function setupThreeJS() {
-  // Create renderer
   renderer = new THREE.WebGLRenderer({ canvas: canvasEl, alpha: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(window.devicePixelRatio);
 
-  // Create scene
   scene = new THREE.Scene();
 
-  // Create camera
   camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
-  camera.position.z = 2; // Just so we can see the arrow in front of us.
+  camera.position.z = 2; 
 
-  // Create a directional light
   const light = new THREE.DirectionalLight(0xffffff, 1);
   light.position.set(0, 1, 2).normalize();
   scene.add(light);
 
-  // Create arrow object:
-  // We'll make a simple arrow out of a cylinder (shaft) and a cone (tip).
-
+  // Create arrow object
   const shaftGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.8, 32);
   const tipGeometry = new THREE.ConeGeometry(0.05, 0.2, 32);
 
@@ -112,20 +125,15 @@ function setupThreeJS() {
   const shaft = new THREE.Mesh(shaftGeometry, redMaterial);
   const tip = new THREE.Mesh(tipGeometry, redMaterial);
 
-  // Position the shaft so its center is at the origin
   shaft.position.y = 0;
-  // Position the tip at the top
-  tip.position.y = 0.5; // half the shaft (0.4) + half the cone height (0.1) ~0.5 total
+  tip.position.y = 0.5;
 
   arrowObject = new THREE.Object3D();
   arrowObject.add(shaft);
   arrowObject.add(tip);
 
-  // By default, cylinders and cones point up the Y-axis. We want the arrow to point "forward" (Z-axis)
-  // Rotate so that the arrow points "up" on our screen. The user orientation is tricky,
-  // but let's have it initially point upward on the screen and rotate it based on bearing.
-  arrowObject.rotation.x = Math.PI / 2; // Now arrow points along the Z-axis
-
+  // Rotate to point along Z-axis
+  arrowObject.rotation.x = Math.PI / 2; 
   scene.add(arrowObject);
 
   window.addEventListener('resize', onWindowResize);
@@ -133,17 +141,11 @@ function setupThreeJS() {
   animate();
 }
 
-/**
- * Animate Three.js scene
- */
 function animate() {
   requestAnimationFrame(animate);
   renderer.render(scene, camera);
 }
 
-/**
- * Handle window resize
- */
 function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
@@ -160,19 +162,16 @@ function updateDirection() {
   const heading = currentHeading !== null ? currentHeading : 0;
   const arrowRotation = bearingToTarget - heading;
 
-  // We previously rotated arrowObject so it points along the Z-axis.
-  // We want arrowObject to rotate around Y-axis to point towards bearing.
-  // Bearing = degrees clockwise from north. If arrow points along Z (north),
-  // rotate by arrowRotation in Y to match bearing difference.
-
+  // Rotate arrow around Y-axis
   arrowObject.rotation.y = THREE.MathUtils.degToRad(arrowRotation);
 
-  // Update distance
-  const dist = computeDistance(currentLatitude, currentLongitude, TARGET_LAT, TARGET_LON);
-  distanceIndicator.textContent = `Distance: ${Math.round(dist)}m`;
+  // Update distance in feet
+  const distMeters = computeDistance(currentLatitude, currentLongitude, TARGET_LAT, TARGET_LON);
+  const distFeet = distMeters * 3.28084; 
+  distanceIndicator.textContent = `Distance: ${Math.round(distFeet)} ft`;
 
   // If close enough, vibrate
-  if (dist < THRESHOLD_DISTANCE) {
+  if (distMeters < THRESHOLD_DISTANCE) {
     if (navigator.vibrate) {
       navigator.vibrate([200, 100, 200]);
     }
