@@ -6,42 +6,46 @@ const TARGET_LON = -81.4631;
 const THRESHOLD_DISTANCE = 20; 
 
 // DOM Elements
-const arrowEl = document.getElementById('arrow');
 const distanceIndicator = document.getElementById('distance-indicator');
 const videoEl = document.getElementById('camera-stream');
+const canvasEl = document.getElementById('three-canvas');
 
-// State variables
 let currentLatitude = null;
 let currentLongitude = null;
 let currentHeading = null;
 
-// Check if device orientation and geolocation are supported
 if ('geolocation' in navigator && 'mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices) {
-  setupCamera();
-  watchPosition();
-  watchHeading();
+  setupCamera().then(() => {
+    watchPosition();
+    watchHeading();
+    setupThreeJS();
+  });
 } else {
   alert("Your browser does not support necessary APIs for this application.");
 }
 
+// THREE.js variables
+let scene, camera, renderer;
+let arrowObject;
+
 /**
  * Setup the back-facing camera stream
  */
-function setupCamera() {
-  // Attempt to use rear camera if available
+async function setupCamera() {
   const constraints = {
     video: { facingMode: { exact: "environment" } },
     audio: false
   };
 
-  navigator.mediaDevices.getUserMedia(constraints)
-    .then(stream => {
-      videoEl.srcObject = stream;
-    })
-    .catch(err => {
-      console.error("Error accessing camera:", err);
-      alert("Could not access the rear camera. Please check permissions.");
-    });
+  const stream = await navigator.mediaDevices.getUserMedia(constraints);
+  videoEl.srcObject = stream;
+
+  return new Promise(resolve => {
+    videoEl.onloadedmetadata = () => {
+      videoEl.play();
+      resolve();
+    };
+  });
 }
 
 /**
@@ -58,79 +62,125 @@ function watchPosition() {
       console.error("Geolocation error:", err);
       alert("Could not get your location. Ensure GPS is enabled.");
     },
-    {
-      enableHighAccuracy: true,
-      maximumAge: 1000
-    }
+    { enableHighAccuracy: true, maximumAge: 1000 }
   );
 }
 
 /**
- * For compass heading (if available):
- * Modern browsers might not support DeviceOrientationEvent without user gestures.
- * This is a simplified approach using the Geolocation API only. 
- * If you'd like to use compass bearing from device orientation:
- * - On iOS you need user gestures and permissions.
- * - For now, we’ll rely on calculating bearing from positions if device heading isn’t available.
+ * Watch device orientation (if available)
  */
 function watchHeading() {
-  // Attempt to use device orientation if supported
   if (window.DeviceOrientationEvent) {
     window.addEventListener('deviceorientation', event => {
-      // alpha = 0 means the device is facing north
-      // alpha: rotation around Z-axis
       currentHeading = event.alpha;
       updateDirection();
     }, true);
   } else {
-    // If deviceorientation not available, we’ll rely on bearing calculation alone.
-    // currentHeading might remain null; arrow direction will be less accurate.
+    // If not available, we'll rely solely on bearing calculations.
   }
 }
 
 /**
- * Update the direction of the arrow based on current location and heading.
+ * Setup Three.js scene
+ */
+function setupThreeJS() {
+  // Create renderer
+  renderer = new THREE.WebGLRenderer({ canvas: canvasEl, alpha: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+
+  // Create scene
+  scene = new THREE.Scene();
+
+  // Create camera
+  camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
+  camera.position.z = 2; // Just so we can see the arrow in front of us.
+
+  // Create a directional light
+  const light = new THREE.DirectionalLight(0xffffff, 1);
+  light.position.set(0, 1, 2).normalize();
+  scene.add(light);
+
+  // Create arrow object:
+  // We'll make a simple arrow out of a cylinder (shaft) and a cone (tip).
+
+  const shaftGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.8, 32);
+  const tipGeometry = new THREE.ConeGeometry(0.05, 0.2, 32);
+
+  const redMaterial = new THREE.MeshPhongMaterial({ color: 0xff0000 });
+
+  const shaft = new THREE.Mesh(shaftGeometry, redMaterial);
+  const tip = new THREE.Mesh(tipGeometry, redMaterial);
+
+  // Position the shaft so its center is at the origin
+  shaft.position.y = 0;
+  // Position the tip at the top
+  tip.position.y = 0.5; // half the shaft (0.4) + half the cone height (0.1) ~0.5 total
+
+  arrowObject = new THREE.Object3D();
+  arrowObject.add(shaft);
+  arrowObject.add(tip);
+
+  // By default, cylinders and cones point up the Y-axis. We want the arrow to point "forward" (Z-axis)
+  // Rotate so that the arrow points "up" on our screen. The user orientation is tricky,
+  // but let's have it initially point upward on the screen and rotate it based on bearing.
+  arrowObject.rotation.x = Math.PI / 2; // Now arrow points along the Z-axis
+
+  scene.add(arrowObject);
+
+  window.addEventListener('resize', onWindowResize);
+
+  animate();
+}
+
+/**
+ * Animate Three.js scene
+ */
+function animate() {
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+}
+
+/**
+ * Handle window resize
+ */
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+/**
+ * Update direction and distance UI
  */
 function updateDirection() {
-  if (currentLatitude === null || currentLongitude === null) return;
+  if (currentLatitude === null || currentLongitude === null || !arrowObject) return;
 
-  // Calculate bearing from current location to the target
   const bearingToTarget = computeBearing(currentLatitude, currentLongitude, TARGET_LAT, TARGET_LON);
-
-  // If we have a device heading (compass), adjust arrow angle accordingly.
-  // If heading is unavailable, arrow just points to computed bearing relative to north.
   const heading = currentHeading !== null ? currentHeading : 0;
-  
-  // Convert device heading to degrees from north
-  // Device heading alpha=0 = facing north, but can differ based on device orientation.
-  // For simplicity, assume alpha=0 means north.
-  // Arrow rotation = bearingToTarget - heading
   const arrowRotation = bearingToTarget - heading;
-  
-  arrowEl.style.transform = `translate(-50%, -50%) rotate(${arrowRotation}deg)`;
+
+  // We previously rotated arrowObject so it points along the Z-axis.
+  // We want arrowObject to rotate around Y-axis to point towards bearing.
+  // Bearing = degrees clockwise from north. If arrow points along Z (north),
+  // rotate by arrowRotation in Y to match bearing difference.
+
+  arrowObject.rotation.y = THREE.MathUtils.degToRad(arrowRotation);
 
   // Update distance
   const dist = computeDistance(currentLatitude, currentLongitude, TARGET_LAT, TARGET_LON);
   distanceIndicator.textContent = `Distance: ${Math.round(dist)}m`;
 
-  // If close enough, vibrate and maybe show an animation.
+  // If close enough, vibrate
   if (dist < THRESHOLD_DISTANCE) {
-    // Vibrate device if supported
     if (navigator.vibrate) {
       navigator.vibrate([200, 100, 200]);
     }
-    // Optionally, change arrow color or add a CSS animation:
-    arrowEl.style.filter = 'drop-shadow(0 0 10px #00ff00)';
-  } else {
-    arrowEl.style.filter = 'drop-shadow(0 0 5px #000)';
   }
 }
 
 /**
  * Calculate bearing between two coordinates
- * Formula Reference:
- * bearing = atan2( sin(Δlon)*cos(lat2),
- *                  cos(lat1)*sin(lat2)-sin(lat1)*cos(lat2)*cos(Δlon) )
  */
 function computeBearing(lat1, lon1, lat2, lon2) {
   const toRadians = deg => deg * Math.PI / 180;

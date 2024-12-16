@@ -1,52 +1,50 @@
 html, body {
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    background: #000;
-    font-family: sans-serif;
-    color: #fff;
-  }
-  
-  .camera-container {
-    position: relative;
-    width: 100vw;
-    height: 100vh;
-    overflow: hidden;
-  }
-  
-  #camera-stream {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  
-  .overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-  }
-  
-  #arrow {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 100px;
-    height: auto;
-    transform: translate(-50%, -50%) rotate(0deg);
-    filter: drop-shadow(0 0 5px #000);
-  }
-  
-  #distance-indicator {
-    position: absolute;
-    bottom: 10%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0,0,0,0.5);
-    padding: 8px 12px;
-    border-radius: 4px;
-    font-size: 16px;
-    text-align: center;
-  }
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #000;
+  font-family: sans-serif;
+  color: #fff;
+}
+
+.camera-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#camera-stream {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+#three-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#distance-indicator {
+  position: absolute;
+  bottom: 10%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.5);
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 16px;
+  text-align: center;
+}
