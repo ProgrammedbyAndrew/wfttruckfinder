@@ -2,10 +2,9 @@
 const TARGET_LAT = 28.3375;
 const TARGET_LON = -81.4631;
 
-// Threshold distance (in meters) at which the device will vibrate/notify.
+// Threshold distance (in meters) to trigger vibrate
 const THRESHOLD_DISTANCE = 20; 
 
-// DOM Elements
 const distanceIndicator = document.getElementById('distance-indicator');
 const videoEl = document.getElementById('camera-stream');
 const canvasEl = document.getElementById('three-canvas');
@@ -13,7 +12,7 @@ const startBtn = document.getElementById('start-btn');
 
 let currentLatitude = null;
 let currentLongitude = null;
-let currentHeading = null;
+let currentHeading = null; // in degrees from North
 
 // THREE.js variables
 let scene, camera, renderer;
@@ -27,23 +26,19 @@ startBtn.addEventListener('click', async () => {
     try {
       const response = await DeviceOrientationEvent.requestPermission();
       if (response !== 'granted') {
-        alert("Device orientation permission not granted. The arrow may not rotate with your device orientation.");
+        alert("Orientation permission not granted. The arrow may not rotate with device orientation.");
       }
     } catch (err) {
-      console.error("Error requesting device orientation permission:", err);
+      console.error("Error requesting orientation permission:", err);
     }
   }
 
-  // Now attempt to set up camera and geolocation
   await setupCamera();
   setupThreeJS();
   watchPosition();
   watchHeading();
 });
 
-/**
- * Setup the back-facing camera stream
- */
 async function setupCamera() {
   const constraints = {
     video: { facingMode: { exact: "environment" } },
@@ -61,9 +56,6 @@ async function setupCamera() {
   });
 }
 
-/**
- * Watch the user's position (GPS)
- */
 function watchPosition() {
   navigator.geolocation.watchPosition(
     pos => {
@@ -73,35 +65,35 @@ function watchPosition() {
     },
     err => {
       console.error("Geolocation error:", err);
-      alert("Could not get your location. Ensure GPS is enabled and grant permission.");
+      alert("Could not get your location. Ensure GPS is enabled and permission granted.");
     },
     { enableHighAccuracy: true, maximumAge: 1000 }
   );
 }
 
-/**
- * Watch device orientation (if available)
- */
 function watchHeading() {
-  if (window.DeviceOrientationEvent) {
-    window.addEventListener('deviceorientation', event => {
-      // iOS Safari may provide webkitCompassHeading:
-      // webkitCompassHeading is degrees from North (0° = North)
-      if (event.webkitCompassHeading !== undefined) {
-        currentHeading = event.webkitCompassHeading;
-      } else {
-        // fallback to alpha if no webkitCompassHeading
-        // alpha: 0 = device facing North
-        currentHeading = event.alpha;
-      }
-      updateDirection();
-    }, true);
+  const handleOrientation = (event) => {
+    // Use webkitCompassHeading if available (iOS)
+    if (typeof event.webkitCompassHeading === "number") {
+      currentHeading = event.webkitCompassHeading; 
+    } else if (typeof event.alpha === "number") {
+      // alpha is degrees clockwise from North (0 = North)
+      // On some devices alpha=0 means facing North
+      currentHeading = event.alpha;
+    }
+    updateDirection();
+  };
+
+  if ('ondeviceorientationabsolute' in window) {
+    window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+  } else if ('ondeviceorientation' in window) {
+    window.addEventListener('deviceorientation', handleOrientation, true);
+  } else {
+    // No orientation events available
+    console.warn("No device orientation events available.");
   }
 }
 
-/**
- * Setup Three.js scene
- */
 function setupThreeJS() {
   renderer = new THREE.WebGLRenderer({ canvas: canvasEl, alpha: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -116,9 +108,9 @@ function setupThreeJS() {
   light.position.set(0, 1, 2).normalize();
   scene.add(light);
 
-  // Create arrow object
-  const shaftGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.8, 32);
-  const tipGeometry = new THREE.ConeGeometry(0.05, 0.2, 32);
+  // Create arrow object (make it slightly bigger)
+  const shaftGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.8, 32);
+  const tipGeometry = new THREE.ConeGeometry(0.07, 0.2, 32);
 
   const redMaterial = new THREE.MeshPhongMaterial({ color: 0xff0000 });
 
@@ -132,12 +124,11 @@ function setupThreeJS() {
   arrowObject.add(shaft);
   arrowObject.add(tip);
 
-  // Rotate to point along Z-axis
+  // Arrow points along +Z after rotation
   arrowObject.rotation.x = Math.PI / 2; 
   scene.add(arrowObject);
 
   window.addEventListener('resize', onWindowResize);
-
   animate();
 }
 
@@ -152,17 +143,21 @@ function onWindowResize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-/**
- * Update direction and distance UI
- */
 function updateDirection() {
   if (currentLatitude === null || currentLongitude === null || !arrowObject) return;
 
   const bearingToTarget = computeBearing(currentLatitude, currentLongitude, TARGET_LAT, TARGET_LON);
-  const heading = currentHeading !== null ? currentHeading : 0;
-  const arrowRotation = bearingToTarget - heading;
+  
+  // If we have heading data, rotate according to heading:
+  // arrowRotation = how much to rotate arrow from device facing North to target bearing
+  let arrowRotation;
+  if (currentHeading !== null) {
+    arrowRotation = bearingToTarget - currentHeading;
+  } else {
+    // No heading data, just point to the bearing from North
+    arrowRotation = bearingToTarget;
+  }
 
-  // Rotate arrow around Y-axis
   arrowObject.rotation.y = THREE.MathUtils.degToRad(arrowRotation);
 
   // Update distance in feet
@@ -170,7 +165,6 @@ function updateDirection() {
   const distFeet = distMeters * 3.28084; 
   distanceIndicator.textContent = `Distance: ${Math.round(distFeet)} ft`;
 
-  // If close enough, vibrate
   if (distMeters < THRESHOLD_DISTANCE) {
     if (navigator.vibrate) {
       navigator.vibrate([200, 100, 200]);
@@ -178,9 +172,6 @@ function updateDirection() {
   }
 }
 
-/**
- * Calculate bearing between two coordinates
- */
 function computeBearing(lat1, lon1, lat2, lon2) {
   const toRadians = deg => deg * Math.PI / 180;
   const dLon = toRadians(lon2 - lon1);
@@ -192,9 +183,6 @@ function computeBearing(lat1, lon1, lat2, lon2) {
   return brngDeg;
 }
 
-/**
- * Compute distance between two coords using Haversine formula (in meters)
- */
 function computeDistance(lat1, lon1, lat2, lon2) {
   const R = 6371000; // radius of Earth in meters
   const toRadians = deg => deg * Math.PI / 180;
